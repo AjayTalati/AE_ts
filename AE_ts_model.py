@@ -93,14 +93,14 @@ class Model():
 
     with tf.variable_scope("Encoder") as scope:  
       #Th encoder cell, multi-layered with dropout
-      cell_enc = tf.nn.rnn_cell.LSTMCell(hidden_size)
-      cell_enc = tf.nn.rnn_cell.MultiRNNCell([cell_enc] * num_layers)
-      cell_enc = tf.nn.rnn_cell.DropoutWrapper(cell_enc,output_keep_prob=self.keep_prob)
+      cell_enc = tf.contrib.rnn.LSTMCell(hidden_size)
+      cell_enc = tf.contrib.rnn.MultiRNNCell([tf.contrib.rnn.LSTMCell(hidden_size) for _ in range(num_layers)])
+      cell_enc = tf.contrib.rnn.DropoutWrapper(cell_enc,output_keep_prob=self.keep_prob)
 
       #Initial state
       initial_state_enc = cell_enc.zero_state(batch_size, tf.float32)
 
-      outputs_enc,_ = tf.nn.seq2seq.rnn_decoder(tf.unpack(self.x_exp,axis=2),initial_state_enc,cell_enc)
+      outputs_enc,_ = tf.contrib.legacy_seq2seq.rnn_decoder(tf.unpack(self.x_exp,axis=2),initial_state_enc,cell_enc)
       cell_output = outputs_enc[-1]  #Only use the final hidden state #tensor in [batch_size,hidden_size]
     with tf.name_scope("Enc_2_lat") as scope:
       #layer for mean of z
@@ -120,13 +120,13 @@ class Model():
       
     with tf.variable_scope("Decoder") as scope:
       # The decoder, also multi-layered
-      cell_dec = tf.nn.rnn_cell.LSTMCell(hidden_size)
-      cell_dec = tf.nn.rnn_cell.MultiRNNCell([cell_dec] * num_layers)
+      cell_dec = tf.contrib.rnn.LSTMCell(hidden_size)
+      cell_dec = tf.contrib.rnn.MultiRNNCell([tf.contrib.rnn.LSTMCell(hidden_size) for _ in range(num_layers)])
 
       #Initial state
       initial_state_dec = tuple([(z_state,z_state)]*num_layers)
       dec_inputs = [tf.zeros([batch_size,1])]*sl
-      outputs_dec,_ = tf.nn.seq2seq.rnn_decoder(dec_inputs,initial_state_dec,cell_dec)
+      outputs_dec,_ = tf.contrib.legacy_seq2seq.rnn_decoder(dec_inputs,initial_state_dec,cell_dec)
     with tf.name_scope("Out_layer") as scope:
       params_o = 2*crd   #Number of coordinates + variances
       W_o = tf.get_variable('W_o',[hidden_size,params_o])
@@ -136,7 +136,7 @@ class Model():
       h_mu,h_sigma_log = tf.unstack(tf.reshape(h_out,[sl,batch_size,params_o]),axis=2)
       h_sigma = tf.exp(h_sigma_log)
       dist = tf.contrib.distributions.Normal(h_mu,h_sigma)
-      px = dist.pdf(tf.transpose(self.x))
+      px = dist.cdf(tf.transpose(self.x))
       loss_seq = -tf.log(tf.maximum(px, 1e-20))             #add epsilon to prevent log(0)
       self.loss_seq = tf.reduce_mean(loss_seq)
       
